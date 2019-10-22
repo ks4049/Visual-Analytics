@@ -1,0 +1,26 @@
+Tableau Discussion Questions and Answers:
+
+1.)  The menu structure of Tableau changes drastically from one version to the next. Can you navigate this tutorial in the next(or previous) version of Tableau?
+
+It actually depends on what feature enhancements are made to the Tableau software in the newer versions.  From my perspective, I feel this tutorial might not suffice for newer/older versions with drastic changes.
+ 
+2.) Different chart types are recommended for different types of data. How would you characterize these chart types? What is it about the data that leads to the recommendations?
+
+Charts are recommended on Tableau for different types of data. I would characterize these charts based on the minimum number of dimensions and the number of numeric measures required for the various charts to be visualized. For example a histogram requires just one measure, where it has bins and conveys how many fall into those bins, but it might not be available for all the numerical measures. It is all about the measures and the number of dimensions of the data that leads to the recommendations.
+
+3.) Is Tableau biased any way? Is it easier to make some kinds of arguments with Tableau than others?
+
+From my perspective, yes it is easier to make arguments with Tableau, because not all measuring values can be measured easily with Tableau and also everyone have their own definition of measurement and also Tableau has its own default way of doing with some measures, which might not be preferred by the users.
+
+4.) Tableau accepts live data and allows you to connect your visualization to live, changing data. Suppose the point you are trying to make is no longer supported by data in future. Will you be blamed for that change?
+
+That shouldn’t be the case, the tool should be able to handle the changes in the future, if not it’s better you switch over to those tools that provides such support.
+
+5.) Tableau makes a lot of default choices that you changed. Do you think it could learn your preferences over time? What it would take to do that?
+
+For Tableau to learn preferences over time, it should be able to keep track of how other users use Tableau in order to learn the patterns but it is more of a privacy issue when it comes to tracking of the patterns used by the users. May be machine learning techniques could be applied to learn the users preferences and patterns for better usability.
+
+
+6.) What is a data visualization? What would have to be subtracted from these pictures so that they could not be called data visualizations?
+
+Data visualization is where information is represented visually in the form of charts, graphs, etc. which can be used to provide real insights for making better business decisions. Tableau can be used for reporting purposes as well. If the measures are removed or converted to categorical values, then it couldn't be called as a visualization.

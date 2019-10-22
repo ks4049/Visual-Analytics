@@ -1,0 +1,239 @@
+---
+title: 'homework iv'
+author: 'Parthivi Shrivastava, Khavya Seshadri'
+date: '2019-10-03'
+output: pdf_document
+header-includes:
+  \usepackage{booktabs}
+---
+
+```{r echo=FALSE}
+# This chunk is just to make it possible to shrink the typeface in succeeding chunks. Mainly this will be used for the crosstabs.
+def.chunk.hook  <- knitr::knit_hooks$get("chunk")
+knitr::knit_hooks$set(chunk = function(x, options) {
+  x <- def.chunk.hook(x, options)
+  ifelse(options$size != "normalsize", paste0("\\", options$size,"\n\n", x, "\n\n \\normalsize"), x)
+})
+```
+
+# Introduction
+
+We are tidying the 311 data by removing the infelicities in columns like Incident.Zip , Borough , Closed.Date, etc. and found the unspecified boroughs using the zip code information. Furthermore, we are using the tidyr functions like gather, spread, separate and complete to depict information in the form of tables which can be used for visualization purposes. We are also introducing a relatable dataset, which in our case is NYPD NYC crimes data. We are taking a sample of around 95K from the original dataset which was around 5.5M. We are cleaning this dataset and also using tidyr functions on it.
+
+# Initialization
+
+Here we load the tidyverse packages and the `data.table` package and load the nyc311 data set. Then we fix the column names of the nyc311 data so that they have no spaces.
+
+```{r initialize}
+library(tidyverse)
+library(data.table)
+nyc311<-fread("311_Service_Requests_from_2010_to_Present.csv", 
+              na.strings = c("","NA","N/A"))
+names(nyc311)<-names(nyc311) %>%
+  stringr::str_replace_all("\\s", ".")
+```
+
+# Data pre-processing
+
+Here we perform data pre-processing steps, by dropping irrelevant columns and removing duplicate rows from the nyc311 dataset.
+
+```{r dataPreProcessing}
+nyc311 <- nyc311[,c(-1,-10:-19,-23, -25:-49)]
+nyc311nodups <- distinct(nyc311)
+names(nyc311nodups)
+```
+
+## Handling missing values
+
+In the following snippet, we have handled the missing values and the infelicities in the columns of the data. 
+Intially, we replaced the invalid zip codes with NA.The criteria we used to ensure the validity of the zip code in the data is :
+1. Zipcode length should be 5 or 10 .
+2. If the zipcode length is 10, then it should satisfy the format of xxxxx-xxxx.
+Apart from the above rules, we also found zipcodes like 00000, 10000 which were invalid, hence replaced them with NA. 
+Now considering the closed date column, we had dates that were defaulted to 01/01/1900 and also there were around 1 lakh records with closed date lesser than the created date, which seems to be invalid and hence we replaced them with NA. 
+For borough, there were around 8 lakh records with unspecified values, out of which 6 lakh had valid zip codes, so we found the boroughs for those records using the valid zipcode information and remaining we filled with NA.
+
+```{r handleMissingValues}
+# Replacing invalid zipcodes with NA
+nyc311nodups[Incident.Zip=="00000" | (str_length(str_trim(Incident.Zip))<5 | 
+        (str_length(str_trim(Incident.Zip)) > 5 & 
+           str_length(str_trim(Incident.Zip)) < 10)  |                                                                                str_length(str_trim(Incident.Zip)) > 10 ) | 
+          Incident.Zip=="10000","Incident.Zip"] <- NA
+
+nyc311nodups[as.Date(nyc311nodups$Closed.Date, format="%m/%d/%Y")==
+                as.Date("01/01/1900", format="%m/%d/%Y") | 
+                as.Date(nyc311nodups$Closed.Date, format="%m/%d/%Y")<
+                  as.Date(nyc311nodups$Created.Date, format="%m/%d/%Y"), 
+             c("Closed.Date") ] <- NA
+
+unspecifiedBro <- nyc311nodups %>%
+  select(Incident.Zip, Borough) %>%
+  filter(Borough=="Unspecified" & !is.na(Incident.Zip))
+
+zipCodeTable <- nyc311nodups %>%
+  select(Incident.Zip, Borough) %>%
+  filter(Borough!="Unspecified" & (str_length(str_trim(Incident.Zip))==5 | 
+   (str_length(str_trim(Incident.Zip))==10 & (str_detect(Incident.Zip,'-')))))
+zipCodeTable <- distinct(zipCodeTable)
+zipCodeTable <-  zipCodeTable %>%
+ group_by(Incident.Zip) %>%
+ summarize(Borough = first(Borough))
+
+joinedTab <- merge(x=unspecifiedBro, y=zipCodeTable, by = "Incident.Zip", all.x = TRUE)
+joinedTab <- distinct(joinedTab)
+colnames(joinedTab)[colnames(joinedTab)=="Borough.x"] <- "Borough"
+
+nyc311nodups <- merge(x=nyc311nodups, y=joinedTab, 
+                  by=c("Incident.Zip", "Borough"), sort=FALSE, all.x = TRUE)
+nyc311nodups[!is.na(Borough.y), "Borough"] <- nyc311nodups[!is.na(Borough.y), "Borough.y"]
+nyc311nodups[Borough=="Unspecified", "Borough"] <- 
+  nyc311nodups[Borough=="Unspecified", "Borough.y"]
+# drop the borough.y
+nyc311nodups <- nyc311nodups[,-"Borough.y"]
+head(nyc311nodups)
+```
+
+# Usage of TidyR
+
+In the following snippet, we are showing a table which depicts the frequency of complaints across every borough with respect to every complaint type. We have achieved this by using spread function on the borough column.
+
+```{r complaintBorough}
+subsetData <- select(nyc311nodups, Complaint.Type, Borough)
+subsetData <- subsetData %>%
+    filter(!is.na(Borough)) %>%
+  group_by(Complaint.Type,Borough) %>%
+  summarize(count=n())
+newData <- complete(subsetData, Complaint.Type, Borough)
+boroughSpread <- newData %>%
+  spread(key=Borough, value=count)
+boroughSpread[is.na(boroughSpread)] <- 0 
+boroughSpread
+```
+
+In the following snippet, we are showing a table which depicts the frequency of complaints for the top 5 agencies with respect to every complaint type. We have achieved this by using group by function which is similar to gather in tidyr library.
+
+```{r complaintAgency}
+AgencyCount <- select(nyc311nodups,Complaint.Type , Agency)
+(agencyData <- AgencyCount %>%
+  filter(Agency== "HPD" | Agency == "DOT" | Agency=="NYPD" 
+         | Agency == "DEP" | Agency=="DSNY") %>%
+  group_by(Complaint.Type,Agency) %>%
+  summarize(frequency = n()))
+```
+
+In the following snippet, we are showing a table which depicts the year wise frequency of complaints with respect to every borough. We have achieved this by using separate function to extract the year from the created date, after which we spreaded across the year, thus computing the frequency of complaints for each borough.
+
+```{r BoroughYear}
+boroughYear <-nyc311nodups %>%
+  select( Borough , Created.Date, Complaint.Type) %>%
+  filter(!is.na(Borough))
+yearData <- separate(boroughYear, Created.Date, into=c("month", "day", "year"), 
+                     convert = T)
+boroughYear <- yearData %>%
+  group_by(year, Borough) %>%
+  summarize(frequency=n())
+(yearSpread <- boroughYear %>%
+  spread(key=year, value=frequency))
+```
+
+In the following snippet, we are showing a table which depicts the frequency of complaints across every borough with respect to the top 5 agencies. We have achieved this using spread function on the borough column.
+
+```{r AgencyBorough}
+AgencyBorough <- select(nyc311nodups,Agency, Borough)
+AgencyBorough <- AgencyBorough %>%
+  filter((Agency== "HPD" | Agency == "DOT" | Agency=="NYPD" 
+          | Agency == "DEP" | Agency=="DSNY") 
+         & !is.na(Borough)) %>%
+  group_by( Agency,Borough) %>%
+  summarize(count= n())
+(AgencyBorough <- AgencyBorough %>%
+  spread(key = Borough, value = count))
+```
+
+# Relatable data set - NYPD NYC Crimes data
+
+## Description
+
+We have used the NYPD NYC crimes data which is a sample of size 95,593 records taken from the original data source.This dataset includes all valid felony, misdemeanor, and violation crimes reported to the New York City Police Department (NYPD). 
+
+## Initialization
+
+Here we load the NYC Crimes data set from the link as provided below and we fill the empty cells with NA.
+
+```{r readCrimesData}
+nycCrimes <- 
+  fread("https://raw.githubusercontent.com/jamesjynus/Shiny/master/data/crime.csv", 
+                   na.strings = c("","NA"))
+```
+
+## Data pre-processing of NYC Crimes data
+
+Here, we removed the irrelevant columns and duplicate records in the data, fixed the column name for borough and we are showing the head and data dictionary.
+
+```{r crimeDataPreProcessing}
+nycCrimes <- nycCrimes[,c(-1,-2,-10,-13,-14,-15,-17)]
+nycCrimenodups <- distinct(nycCrimes)
+colnames(nycCrimenodups)[colnames(nycCrimenodups)=="Boro"] <- "Borough"
+nycCrimenodups <-  nycCrimenodups[str_trim(Offense)!="",]
+names(nycCrimenodups)
+head(nycCrimenodups)
+```
+
+## Data Dictionary
+
+•	Date - Date on which crime happened in the format yyyy-mm-dd.
+
+•	Time - Time at which crime occured in the format hh:mm:ss.
+
+•	Code - Unique code for every offense.
+
+•	Offense - The description of the crime type(sub-categories of the crime).
+
+•	Status - The status of the crime report submitted(Allowed values: COMPLETED , ATTEMPTED).
+
+•	Type - The type of crime(Allowed types: FELONY, MISDEMEANOR,VIOLATION).
+
+•	Borough - town/district of the NYC provided by submitter(Values: BRONX, BROOKLYN, MANHATTAN, QUEENS, STATEN ISLAND).
+
+•	Latitude - Geo-based latitude of the incident location(Type: degrees).
+
+•	Longitude – Geo-based longitude of the incident location(Type: degrees).
+
+•	Population - The population of the Borough on the date of the crime.
+
+•	Year_Month_New - Year and Month of the crime date in the format yyyy-mm.
+
+## Usage of TidyR
+
+In the following snippet, we are showing a table which depicts the frequency of crimes across every borough with respect to every crime type. We have achieved this by using spread function on the borough column.
+
+```{r crimesTypeBoro}
+subsetData <- select(nycCrimenodups, Type, Borough)
+subsetData <- subsetData %>%
+    filter(!is.na(Borough)) %>%
+  group_by(Type,Borough) %>%
+  summarize(count=n())
+newData <- complete(subsetData,Type, Borough)
+boroughSpread <- newData %>%
+  spread(key=Borough, value=count)
+boroughSpread[is.na(boroughSpread)] <- 0 
+boroughSpread
+```
+
+In the following snippet, we are showing a table which depicts the year wise frequency of crimes for each borough. We have achieved this by using the separate function to extract the year from the created date, and then we spread across the year, thus computing the frequency of crimes for each borough.
+
+```{r crimesBoroYear}
+boroYear <-nycCrimenodups %>%
+  select( Borough , Year_Month_New,Type) %>%
+  filter(!is.na(Borough))
+yearData <- separate(boroYear, Year_Month_New, into=c("year", "month"), convert = T)
+boroYear <- yearData %>%
+  group_by(year,Borough) %>%
+  summarize(frequency=n())
+(yearSpread <- boroYear %>%
+  spread(key=year, value=frequency))
+```
+
+# Conclusion
+
+In this document, we introduced a new dataset: NYPD NYC Crimes data relateable to our 311NYC data. We performed data cleaning by dropping the irrelevant columns, removing the duplicates and replacing the missing values on both the datasets. We have also made use of the tidyR functions, showing relevant information with respect to complaints and crimes in the form of tables.
